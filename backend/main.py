@@ -5,7 +5,7 @@ import zipfile
 import os
 import shutil
 import stat
-import git
+import urllib.request # Replaced 'git' with built-in web request module
 import google.generativeai as genai
 from dotenv import load_dotenv
 from scanner import process_codebase
@@ -24,7 +24,6 @@ app.add_middleware(
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 genai.configure(api_key=GEMINI_API_KEY)
 
-# Map tasks to prioritized fallback lists of Gemini models
 MODEL_PREFERENCES = {
     "minimal": [
         "gemini-3.5-flash-lite",
@@ -79,7 +78,6 @@ async def analyze_project(
     github_url: Optional[str] = Form(None)
 ):
 
-    # --- API KEY LOGIC ---
     if user_api_key:
         genai.configure(api_key=user_api_key)
     else:
@@ -87,7 +85,6 @@ async def analyze_project(
 
     upload_dir = "uploaded_projects/current_scan"
     
-    # Reset target directory securely
     if os.path.exists(upload_dir):
         def remove_readonly(func, path, excinfo):
             os.chmod(path, stat.S_IWRITE)
@@ -98,15 +95,32 @@ async def analyze_project(
     project_name = "Uploaded_Project"
 
     try:
-        # CASE 1: User provided a GitHub Repository URL
+        # CASE 1: User provided a GitHub Repository URL (REWRITTEN FOR VERCEL)
         if github_url:
-            print(f"Cloning repository from {github_url}...")
+            print(f"Downloading repository from {github_url}...")
             try:
-                git.Repo.clone_from(github_url, upload_dir, depth=1)
-                clean_url = github_url.rstrip("/")
-                project_name = clean_url.split("/")[-1].replace(".git", "")
+                # Extract owner and repo name from the URL
+                clean_url = github_url.rstrip("/").replace(".git", "")
+                owner_repo = clean_url.split("github.com/")[-1]
+                
+                # Use GitHub's API to get a downloadable zip of the default branch
+                zip_url = f"https://api.github.com/repos/{owner_repo}/zipball"
+                zip_path = os.path.join(upload_dir, "repo.zip")
+                
+                # GitHub requires a User-Agent header to use their API
+                req = urllib.request.Request(zip_url, headers={'User-Agent': 'Mozilla/5.0'})
+                
+                with urllib.request.urlopen(req) as response, open(zip_path, 'wb') as out_file:
+                    shutil.copyfileobj(response, out_file)
+                
+                with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                    zip_ref.extractall(upload_dir)
+                    
+                os.remove(zip_path)
+                project_name = owner_repo.split("/")[-1]
+                
             except Exception as e:
-                return {"error": f"Failed to clone repository. Ensure the URL is public and valid. Details: {str(e)}"}
+                return {"error": f"Failed to download repository. Ensure the URL is public and valid. Details: {str(e)}"}
 
         # CASE 2: User uploaded a single .zip file
         elif files and len(files) == 1 and files[0].filename.endswith(".zip"):
@@ -138,25 +152,21 @@ async def analyze_project(
         codebase_text = process_codebase(upload_dir)
 
     finally:
-        # ROBUST CLEANUP: Fixes Windows Git permission locks on .git folders
         if os.path.exists(upload_dir):
             def remove_readonly(func, path, excinfo):
                 os.chmod(path, stat.S_IWRITE)
                 func(path)
             shutil.rmtree(upload_dir, onerror=remove_readonly)
 
-    # 1. Prepare Prompt
     prompt_instruction = PROMPTS.get(level, PROMPTS["medium"])
     full_prompt = f"{prompt_instruction}\n\nHere is the codebase:\n\n{codebase_text}"
 
-    # 2. Get Waterfall Priority List
     preferred_models = MODEL_PREFERENCES.get(level, MODEL_PREFERENCES["medium"])
     
     summary = None
     used_model = None
     last_error = ""
 
-    # 3. Waterfall Execution Loop
     for model_name in preferred_models:
         try:
             print(f"Attempting model: {model_name}...")
@@ -171,7 +181,6 @@ async def analyze_project(
             print(f"Model '{model_name}' failed with error: {e}. Trying next available fallback...")
             continue
 
-    # 4. Handle complete fallback failure
     if not summary:
         if "api key" in last_error or "authentication" in last_error or "unauthenticated" in last_error or "invalid" in last_error:
              return {"error": "Invalid API Key provided. Please check your key and try again."}
