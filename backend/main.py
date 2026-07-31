@@ -16,6 +16,11 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
+    allow_origins=[
+        "https://unpack-tau.vercel.app", 
+        "http://localhost:3000",
+        "http://localhost:5173"
+    ],
     allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
