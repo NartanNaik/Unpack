@@ -1,13 +1,16 @@
 from typing import List, Optional
-from fastapi import FastAPI, UploadFile, File, Form
-from fastapi.middleware.cors import CORSMiddleware
-import zipfile
+
 import os
 import shutil
 import stat
-import urllib.request # Replaced 'git' with built-in web request module
+import zipfile
+import urllib.request  # Replaced 'git' with built-in web request module
+
 import google.generativeai as genai
 from dotenv import load_dotenv
+from fastapi import FastAPI, File, Form, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+
 from scanner import process_codebase
 
 load_dotenv()
@@ -17,11 +20,11 @@ app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://unpack-tau.vercel.app", 
+        "https://unpack-tau.vercel.app",
         "http://localhost:3000",
-        "http://localhost:5173"
+        "http://localhost:5173",
     ],
-    allow_origins=["*"],
+    allow_origins=["*"],  # NOTE: this second assignment overrides the list above
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -35,14 +38,14 @@ MODEL_PREFERENCES = {
         "gemini-3.1-flash-lite",
         "gemini-2.5-flash-lite",
         "gemini-2.0-flash-lite",
-        "gemini-flash-lite-latest"
+        "gemini-flash-lite-latest",
     ],
     "medium": [
         "gemini-3.6-flash",
         "gemini-3.5-flash",
         "gemini-2.5-flash",
         "gemini-2.0-flash",
-        "gemini-flash-latest"
+        "gemini-flash-latest",
     ],
     "everything": [
         "gemini-omni-flash-preview",
@@ -50,29 +53,51 @@ MODEL_PREFERENCES = {
         "gemini-3.5-flash",
         "gemini-3-flash-preview",
         "gemini-2.5-flash",
-        "gemini-flash-latest"
-    ]
+        "gemini-flash-latest",
+    ],
 }
 
 PROMPTS = {
     "minimal": (
-        "Analyze the provided codebase. Provide the response cleanly formatted in Markdown (use headers and bullet points where appropriate, avoid raw markdown block tags if unnecessary). "
-        "In 1 short paragraph, explain the core idea. Follow with a bulleted list of the tech stack (Frontend, Backend, Database)."
+        "Analyze the provided codebase. Provide the response cleanly formatted in Markdown "
+        "(use headers and bullet points where appropriate, avoid raw markdown block tags if "
+        "unnecessary). In 1 short paragraph, explain the core idea. Follow with a bulleted list "
+        "of the tech stack (Frontend, Backend, Database)."
     ),
     "medium": (
-        "Analyze the provided codebase. Format the output cleanly in Markdown. Provide a high-level architectural overview, "
-        "list the main features, and outline database models/schemas."
+        "Analyze the provided codebase. Format the output cleanly in Markdown. Provide a "
+        "high-level architectural overview, list the main features, and outline database "
+        "models/schemas."
     ),
     "everything": (
-        "Analyze the provided codebase and provide an exhaustive, A-to-Z technical breakdown formatted in Markdown. Include: "
+        "Analyze the provided codebase and provide an exhaustive, A-to-Z technical breakdown "
+        "formatted in Markdown. Include: "
         "1. Complete System Architecture\n"
         "2. Tech Stack & Key Libraries\n"
         "3. Database Schema & Data Flow\n"
         "4. Key Features\n"
         "5. File/Directory Breakdown\n"
         "6. Potential Security or Technical Debt Issues."
-    )
+    ),
 }
+
+LEVEL_LABELS = {
+    "minimal": "Quick Summary",
+    "medium": "Standard Architecture",
+    "everything": "Deep Dive",
+}
+
+
+def _remove_readonly(func, path, excinfo):
+    """Callback for shutil.rmtree to force-delete read-only files."""
+    os.chmod(path, stat.S_IWRITE)
+    func(path)
+
+
+def _clear_upload_dir(upload_dir: str) -> None:
+    if os.path.exists(upload_dir):
+        shutil.rmtree(upload_dir, onerror=_remove_readonly)
+
 
 @app.post("/analyze")
 async def analyze_project(
@@ -80,21 +105,16 @@ async def analyze_project(
     level: str = Form("medium"),
     mode: str = Form("temp"),
     user_api_key: Optional[str] = Form(None),
-    github_url: Optional[str] = Form(None)
+    github_url: Optional[str] = Form(None),
 ):
-
     if user_api_key:
         genai.configure(api_key=user_api_key)
     else:
         genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
     upload_dir = "uploaded_projects/current_scan"
-    
-    if os.path.exists(upload_dir):
-        def remove_readonly(func, path, excinfo):
-            os.chmod(path, stat.S_IWRITE)
-            func(path)
-        shutil.rmtree(upload_dir, onerror=remove_readonly)
+
+    _clear_upload_dir(upload_dir)
     os.makedirs(upload_dir, exist_ok=True)
 
     project_name = "Uploaded_Project"
@@ -107,35 +127,40 @@ async def analyze_project(
                 # Extract owner and repo name from the URL
                 clean_url = github_url.rstrip("/").replace(".git", "")
                 owner_repo = clean_url.split("github.com/")[-1]
-                
+
                 # Use GitHub's API to get a downloadable zip of the default branch
                 zip_url = f"https://api.github.com/repos/{owner_repo}/zipball"
                 zip_path = os.path.join(upload_dir, "repo.zip")
-                
+
                 # GitHub requires a User-Agent header to use their API
-                req = urllib.request.Request(zip_url, headers={'User-Agent': 'Mozilla/5.0'})
-                
-                with urllib.request.urlopen(req) as response, open(zip_path, 'wb') as out_file:
+                req = urllib.request.Request(zip_url, headers={"User-Agent": "Mozilla/5.0"})
+
+                with urllib.request.urlopen(req) as response, open(zip_path, "wb") as out_file:
                     shutil.copyfileobj(response, out_file)
-                
-                with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+
+                with zipfile.ZipFile(zip_path, "r") as zip_ref:
                     zip_ref.extractall(upload_dir)
-                    
+
                 os.remove(zip_path)
                 project_name = owner_repo.split("/")[-1]
-                
+
             except Exception as e:
-                return {"error": f"Failed to download repository. Ensure the URL is public and valid. Details: {str(e)}"}
+                return {
+                    "error": (
+                        "Failed to download repository. Ensure the URL is public and valid. "
+                        f"Details: {str(e)}"
+                    )
+                }
 
         # CASE 2: User uploaded a single .zip file
         elif files and len(files) == 1 and files[0].filename.endswith(".zip"):
             zip_path = os.path.join(upload_dir, files[0].filename)
             with open(zip_path, "wb") as buffer:
                 shutil.copyfileobj(files[0].file, buffer)
-            
-            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+
+            with zipfile.ZipFile(zip_path, "r") as zip_ref:
                 zip_ref.extractall(upload_dir)
-                
+
             os.remove(zip_path)
             project_name = files[0].filename.replace(".zip", "")
 
@@ -146,7 +171,7 @@ async def analyze_project(
                 os.makedirs(os.path.dirname(file_path), exist_ok=True)
                 with open(file_path, "wb") as buffer:
                     shutil.copyfileobj(file.file, buffer)
-            
+
             if files and ("/" in files[0].filename or "\\" in files[0].filename):
                 sep = "/" if "/" in files[0].filename else "\\"
                 project_name = files[0].filename.split(sep)[0]
@@ -157,17 +182,13 @@ async def analyze_project(
         codebase_text = process_codebase(upload_dir)
 
     finally:
-        if os.path.exists(upload_dir):
-            def remove_readonly(func, path, excinfo):
-                os.chmod(path, stat.S_IWRITE)
-                func(path)
-            shutil.rmtree(upload_dir, onerror=remove_readonly)
+        _clear_upload_dir(upload_dir)
 
     prompt_instruction = PROMPTS.get(level, PROMPTS["medium"])
     full_prompt = f"{prompt_instruction}\n\nHere is the codebase:\n\n{codebase_text}"
 
     preferred_models = MODEL_PREFERENCES.get(level, MODEL_PREFERENCES["medium"])
-    
+
     summary = None
     used_model = None
     last_error = ""
@@ -187,16 +208,21 @@ async def analyze_project(
             continue
 
     if not summary:
-        if "api key" in last_error or "authentication" in last_error or "unauthenticated" in last_error or "invalid" in last_error:
-             return {"error": "Invalid API Key provided. Please check your key and try again."}
-             
+        if (
+            "api key" in last_error
+            or "authentication" in last_error
+            or "unauthenticated" in last_error
+            or "invalid" in last_error
+        ):
+            return {"error": "Invalid API Key provided. Please check your key and try again."}
+
         summary = (
             "⚠️ **Analysis Failed:** Attempted to process your request across all fallback models, "
             "but all listed models were unavailable or exceeded quota limits."
         )
         used_model = "None"
 
-    level_label = {"minimal": "Quick Summary", "medium": "Standard Architecture", "everything": "Deep Dive"}.get(level, "Analysis")
+    level_label = LEVEL_LABELS.get(level, "Analysis")
     formatted_project_name = f"{project_name} [{level_label}]"
 
     return {
@@ -204,5 +230,5 @@ async def analyze_project(
         "level": level,
         "mode": mode,
         "model_used": used_model,
-        "summary": summary
+        "summary": summary,
     }
