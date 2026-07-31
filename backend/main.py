@@ -106,15 +106,21 @@ async def analyze_project(
     user_api_key: Optional[str] = Form(None),
     github_url: Optional[str] = Form(None),
 ):
+    print("1. Endpoint entered")
     if user_api_key:
+        print("2. Using custom API key")
         genai.configure(api_key=user_api_key)
     else:
+        print("2. Using environment API key")
         genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
     upload_dir = "uploaded_projects/current_scan"
+    print("3. Upload directory:", upload_dir)
 
     _clear_upload_dir(upload_dir)
+    print("4. Cleared upload directory")
     os.makedirs(upload_dir, exist_ok=True)
+    print("5. Created upload directory")
 
     project_name = "Uploaded_Project"
 
