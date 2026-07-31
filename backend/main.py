@@ -23,8 +23,7 @@ app.add_middleware(
         "https://unpack-tau.vercel.app",
         "http://localhost:3000",
         "http://localhost:5173",
-    ],
-    allow_origins=["*"],  # NOTE: this second assignment overrides the list above
+    ],  
     allow_methods=["*"],
     allow_headers=["*"],
 )
