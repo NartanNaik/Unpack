@@ -114,7 +114,10 @@ async def analyze_project(
         print("2. Using environment API key")
         genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
-    upload_dir = "uploaded_projects/current_scan"
+    # NOTE: Vercel's Python runtime only allows writes to /tmp — the rest of the
+    # deployed filesystem is read-only. Using a relative path here causes a
+    # "Read-only file system" OSError and a 500 response.
+    upload_dir = "/tmp/uploaded_projects/current_scan"
     print("3. Upload directory:", upload_dir)
 
     _clear_upload_dir(upload_dir)
