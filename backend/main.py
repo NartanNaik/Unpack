@@ -82,7 +82,7 @@ async def analyze_project(
         api_key=user_api_key,
     )
 
-    upload_dir = "uploaded_projects/current_scan"
+    upload_dir = "/tmp/current_scan"
     
     if os.path.exists(upload_dir):
         def remove_readonly(func, path, excinfo):
