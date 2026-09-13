@@ -26,21 +26,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# OpenRouter specific model tags
+# OpenRouter specific model tags (Stable Production Models)
 MODEL_PREFERENCES = {
     "minimal": [
-        "google/gemini-2.0-flash-lite-preview-02-05:free",
-        "google/gemini-flash-1.5-8b"
+        "google/gemini-2.5-flash",
+        "google/gemini-flash-1.5"
     ],
     "medium": [
-        "google/gemini-2.0-flash-lite-preview-02-05:free",
-        "google/gemini-2.0-flash-exp:free",
+        "google/gemini-2.5-flash",
         "google/gemini-flash-1.5"
     ],
     "everything": [
-        "google/gemini-2.0-pro-exp-02-05:free",
-        "google/gemini-2.0-flash-exp:free",
-        "google/gemini-pro-1.5"
+        "google/gemini-2.5-pro",
+        "google/gemini-2.5-flash"
     ]
 }
 
