@@ -29,16 +29,16 @@ app.add_middleware(
 # OpenRouter specific model tags (Stable Production Models)
 MODEL_PREFERENCES = {
     "minimal": [
-        "google/gemini-2.5-flash",
-        "google/gemini-flash-1.5"
+        "openrouter/free",
+        "cohere/north-mini-code:free"
     ],
     "medium": [
-        "google/gemini-2.5-flash",
-        "google/gemini-flash-1.5"
+        "openrouter/free",
+        "nvidia/nemotron-3-super-120b-a12b:free"
     ],
     "everything": [
-        "google/gemini-2.5-pro",
-        "google/gemini-2.5-flash"
+        "nvidia/nemotron-3-super-120b-a12b:free",
+        "cohere/north-mini-code:free"
     ]
 }
 
