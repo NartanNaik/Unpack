@@ -164,7 +164,8 @@ async def analyze_project(
                 model=model_name,
                 messages=[
                     {"role": "user", "content": full_prompt}
-                ]
+                ],
+                max_tokens=8000
             )
             summary = response.choices[0].message.content
             used_model = model_name
