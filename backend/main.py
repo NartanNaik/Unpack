@@ -30,17 +30,17 @@ app.add_middleware(
 MODEL_PREFERENCES = {
     "minimal": [
         "google/gemini-2.0-flash-lite-preview-02-05:free",
-        "google/gemini-1.5-flash-8b"
+        "google/gemini-flash-1.5-8b"
     ],
     "medium": [
         "google/gemini-2.0-flash-lite-preview-02-05:free",
         "google/gemini-2.0-flash-exp:free",
-        "google/gemini-1.5-flash"
+        "google/gemini-flash-1.5"
     ],
     "everything": [
         "google/gemini-2.0-pro-exp-02-05:free",
         "google/gemini-2.0-flash-exp:free",
-        "google/gemini-1.5-pro"
+        "google/gemini-pro-1.5"
     ]
 }
 
