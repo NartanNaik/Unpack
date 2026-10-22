@@ -1,0 +1,116 @@
+/* =========================================================================
+   Upload box: no golden line, no hover effect
+   ========================================================================= */
+.upload-box,
+.upload-box:hover {
+  border: 1px solid var(--border-color);
+  box-shadow: var(--card-shadow);
+  transition: none;
+}
+
+/* =========================================================================
+   Background logo: orbits in a circle and fades in and out
+   ========================================================================= */
+.bg-orbit {
+  position: fixed;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  overflow: hidden;
+}
+.orbit-item {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: var(--s);
+  height: var(--s);
+  margin: calc(var(--s) / -2) 0 0 calc(var(--s) / -2);
+  animation:
+    orbitMove var(--dur) linear infinite,
+    orbitFade var(--fade) ease-in-out infinite;
+  animation-delay: var(--delay, 0s);
+}
+.orbit-item svg {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  animation: orbitSpin var(--spin) linear infinite;
+}
+.orbit-a { --s: 150px; --r: min(32vw, 34vh); --dur: 38s; --fade: 6s;   --spin: 22s; }
+.orbit-b { --s: 90px;  --r: min(24vw, 26vh); --dur: 26s; --fade: 8s;   --spin: 16s; --delay: -9s; }
+
+@keyframes orbitMove {
+  from { transform: rotate(0deg) translateX(var(--r)) rotate(0deg); }
+  to   { transform: rotate(360deg) translateX(var(--r)) rotate(-360deg); }
+}
+@keyframes orbitFade {
+  0%, 100% { opacity: 0.02; }
+  50% { opacity: 0.14; }
+}
+@keyframes orbitSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .orbit-item, .orbit-item svg { animation: orbitFade 8s ease-in-out infinite; }
+}
+@media print { .bg-orbit { display: none !important; } }
+
+/* =========================================================================
+   Contact menu: email item
+   ========================================================================= */
+.contact-menu { min-width: 250px; }
+.contact-item .ci-text { display: flex; flex-direction: column; line-height: 1.25; }
+.contact-item small { font-size: 11px; font-weight: 500; opacity: 0.85; }
+.contact-email { --c1: #ea4335; --c2: #b3261e; }
+@media (max-width: 768px) {
+  .contact-menu { margin-left: -125px; }
+}
+
+/* =========================================================================
+   Folder picker explainer dialog
+   ========================================================================= */
+.folder-info { text-align: left; }
+.folder-info h3 { margin: 12px 0 8px; font-size: 22px; text-align: center; }
+.folder-info p { margin: 0 0 14px; color: var(--text-muted); line-height: 1.55; font-size: 14px; }
+.folder-info-icon {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 16px;
+  color: #2a1458;
+  background:
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.16) 0 2px, transparent 2px 7px),
+    linear-gradient(135deg, var(--gold-light), var(--gold));
+  box-shadow: 0 8px 20px rgba(166, 124, 26, 0.35);
+}
+.folder-info-icon svg { width: 28px; height: 28px; fill: currentColor; }
+.folder-steps { list-style: none; margin: 0 0 14px; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.folder-steps li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  font-size: 14px;
+  color: var(--text-main);
+  background: var(--bg-color);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+}
+.folder-steps li > span {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 800;
+  color: #2a1458;
+  background: linear-gradient(135deg, var(--gold-light), var(--gold));
+}
+.folder-check { display: flex; align-items: center; gap: 8px; margin: 4px 0 6px; font-size: 13px; color: var(--text-muted); cursor: pointer; }

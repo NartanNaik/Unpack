@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import { supabase, API_URL } from './supabase';
 import { streamAnalysis } from './analyzeClient';
 import { exportPdf, exportWord, exportPpt } from './exporters';
+import Tour from './Tour';
 
 // ---------------------------------------------------------------------------
 // Local file filtering (same idea as .gitignore)
@@ -133,6 +134,9 @@ function getStatus({ stage, level, stageElapsed, live, uploadPct }) {
   return { main: pool[Math.floor(stageElapsed / 3.5) % pool.length], sub: '' };
 }
 
+const ALL_TOUR_IDS = ['theme', 'contact', 'temp', 'perm', 'history', 'upload', 'levels', 'diagnose'];
+const NEW_TOUR_IDS = ['contact', 'diagnose']; // shown to users who already finished the old tour
+
 const SourceIcon = ({ type }) => {
   const style = { width: '16px', height: '16px', fill: 'currentColor', flexShrink: 0 };
   if (type === 'zip') {
@@ -159,7 +163,7 @@ const SourceIcon = ({ type }) => {
   return null;
 };
 
-export default function Workspace({ session, onSignIn, sliderRef }) {
+export default function Workspace({ session, onSignIn, sliderRef, contactBtnRef }) {
   const [activeTab, setActiveTab] = useState('temp');
   const [payload, setPayload] = useState(null); // { blob, count } : the compressed project zip
   const [projectLabel, setProjectLabel] = useState('');
@@ -179,6 +183,10 @@ export default function Workspace({ session, onSignIn, sliderRef }) {
   const [popupMsg, setPopupMsg] = useState(null);
   const [exporting, setExporting] = useState(null);
 
+  // Folder picker explainer dialog
+  const [showFolderInfo, setShowFolderInfo] = useState(false);
+  const [folderDontShow, setFolderDontShow] = useState(false);
+
   // Live status state
   const [stage, setStage] = useState('start');
   const [live, setLive] = useState({});
@@ -189,19 +197,33 @@ export default function Workspace({ session, onSignIn, sliderRef }) {
   const loadStartRef = useRef(Date.now());
   const abortRef = useRef(null);
 
-  // Tour States
-  const [tourStep, setTourStep] = useState(0);
+  // Tour
+  const [tourIds, setTourIds] = useState(null); // null = tour not running
   const tempTabRef = useRef(null);
   const permTabRef = useRef(null);
   const historyTabRef = useRef(null);
   const uploadButtonsRef = useRef(null);
   const explainButtonsRef = useRef(null);
+  const diagnoseRef = useRef(null);
 
   const zipInputRef = useRef(null);
   const folderInputRef = useRef(null);
 
   const busy = loading || isFileProcessing;
   const runningRef = useRef(false); // blocks double-clicks before React re-renders
+  const userId = session?.user?.id;
+
+  const tourSteps = [
+    { id: 'theme', ref: sliderRef, title: 'Visual Settings', text: 'Drag this slider to smoothly switch the whole interface between Light and Dark mode.' },
+    { id: 'contact', ref: contactBtnRef, isNew: true, title: 'Contact', text: 'Want to reach the developer? Open this menu to send an email or visit GitHub and LinkedIn.' },
+    { id: 'temp', ref: tempTabRef, title: 'Volatile Mode', text: 'Temp mode analyzes your code instantly and stores nothing in the database.' },
+    { id: 'perm', ref: permTabRef, title: 'Persistent Mode', text: 'Persistent mode saves every analysis to your archive automatically.' },
+    { id: 'history', ref: historyTabRef, title: 'Archives', text: 'Open your saved analyses here, grouped by project.' },
+    { id: 'upload', ref: uploadButtonsRef, needsWorkspace: true, title: 'Input Source', text: 'Load a folder or a .zip file, or paste a public GitHub link above. Libraries and build folders are skipped for you.' },
+    { id: 'levels', ref: explainButtonsRef, needsWorkspace: true, title: 'Analysis Depth', text: 'Pick how deep the report should go, from a quick summary to a full deep dive.' },
+    { id: 'diagnose', ref: diagnoseRef, needsWorkspace: true, isNew: true, title: 'Diagnose', text: 'A full forensic audit. It maps every file, finds broken links and missing logic, and writes ready-to-use code fixes.' },
+  ];
+  const activeSteps = tourIds ? tourSteps.filter((s) => tourIds.includes(s.id)) : [];
 
   const fetchHistory = async () => {
     if (!session?.user) return;
@@ -209,19 +231,25 @@ export default function Workspace({ session, onSignIn, sliderRef }) {
     if (data) setHistoryLogs(data);
   };
 
+  // Depends on the user id (not the whole session object) so token refreshes don't restart the tour
   useEffect(() => {
-    if (session?.user) {
-      fetchHistory();
-      const hasSeenTour = localStorage.getItem(`tour_${session.user.id}`);
-      if (!hasSeenTour) {
-        setTourStep(1);
-      }
-    } else {
+    if (!userId) {
       setHistoryLogs([]);
       setSummary('');
+      setTourIds(null);
+      return undefined;
     }
+    fetchHistory();
+
+    let timer;
+    if (!localStorage.getItem(`tour_v2_${userId}`)) {
+      const seenOld = localStorage.getItem(`tour_${userId}`);
+      // Wait for the splash screen to finish before showing the guide
+      timer = setTimeout(() => setTourIds(seenOld ? NEW_TOUR_IDS : ALL_TOUR_IDS), 2800);
+    }
+    return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session]);
+  }, [userId]);
 
   // Re-render twice a second while loading so the timer and messages keep moving
   useEffect(() => {
@@ -230,18 +258,29 @@ export default function Workspace({ session, onSignIn, sliderRef }) {
     return () => clearInterval(id);
   }, [loading]);
 
-  // Handle Tour auto-scrolling so elements are always on screen
-  useEffect(() => {
-    const refs = [null, sliderRef, tempTabRef, permTabRef, historyTabRef, uploadButtonsRef, explainButtonsRef];
-    const currentRef = refs[tourStep];
-    if (currentRef?.current) {
-      currentRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }
-  }, [tourStep, sliderRef]);
-
   const closeTour = () => {
-    setTourStep(0);
-    if (session?.user) localStorage.setItem(`tour_${session.user.id}`, 'true');
+    setTourIds(null);
+    if (userId) {
+      localStorage.setItem(`tour_v2_${userId}`, 'true');
+      localStorage.setItem(`tour_${userId}`, 'true');
+    }
+  };
+
+  // The upload box only exists outside the archives tab, so switch back when a step needs it
+  const handleTourStep = (step) => {
+    if (step.needsWorkspace) setActiveTab((t) => (t === 'history' ? 'temp' : t));
+  };
+
+  // ------------------------------------------------------------------ folder picker
+  const openFolderPicker = () => {
+    if (localStorage.getItem('unpack_folder_info_seen')) folderInputRef.current?.click();
+    else setShowFolderInfo(true);
+  };
+
+  const confirmFolderPicker = () => {
+    if (folderDontShow) localStorage.setItem('unpack_folder_info_seen', 'true');
+    setShowFolderInfo(false);
+    folderInputRef.current?.click();
   };
 
   // ------------------------------------------------------------------ file selection
@@ -531,27 +570,6 @@ export default function Workspace({ session, onSignIn, sliderRef }) {
     }
   };
 
-  const getTourPosition = (ref, position) => {
-    if (!ref.current) return { top: -9999, left: -9999 };
-    const rect = ref.current.getBoundingClientRect();
-    const bubbleWidth = 280;
-
-    // Base center alignment
-    let left = rect.left + (rect.width / 2) - (bubbleWidth / 2);
-
-    // Prevent horizontal overflow
-    if (left < 10) left = 10;
-    if (left + bubbleWidth > window.innerWidth - 10) left = window.innerWidth - bubbleWidth - 10;
-
-    let top = position === 'bottom' ? rect.bottom + 15 : rect.top - 180;
-
-    // Prevent vertical clipping (if bottom falls off, push above. If top falls off, push below)
-    if (top + 180 > window.innerHeight) top = rect.top - 180;
-    if (top < 10) top = rect.bottom + 15;
-
-    return { top, left };
-  };
-
   const groupedArchives = historyLogs.reduce((acc, log) => {
     const cleanName = log.project_name.split(' [')[0];
     if (!acc[cleanName]) acc[cleanName] = [];
@@ -581,7 +599,7 @@ export default function Workspace({ session, onSignIn, sliderRef }) {
     <div className="workspace-container" style={{ position: 'relative' }}>
 
       {popupMsg && (
-        <div className="popup-overlay" style={{ zIndex: 3000 }}>
+        <div className="popup-overlay" style={{ zIndex: 30000 }}>
           <div className="popup-content">
             <h3 style={{ marginTop: 0, color: 'var(--text-main)' }}>System Notice</h3>
             <p style={{ color: 'var(--text-muted)', lineHeight: 1.5 }}>{popupMsg}</p>
@@ -590,71 +608,36 @@ export default function Workspace({ session, onSignIn, sliderRef }) {
         </div>
       )}
 
-      {/* TOUR SYSTEM */}
-      {tourStep > 0 && (
-        <>
-          <div className="tour-overlay"></div>
-          {tourStep === 1 && (
-            <div className="tour-bubble" style={getTourPosition(sliderRef, 'bottom')}>
-              <h4 className="tour-header">Visual Settings</h4>
-              <p className="tour-text">Drag this slider to seamlessly transition the UI from Light mode to Dark mode.</p>
-              <div className="tour-controls">
-                <button className="btn-tour-cancel" onClick={closeTour}>Skip</button>
-                <button className="btn-tour-next" onClick={() => setTourStep(2)}>Next</button>
-              </div>
+      {/* FOLDER PICKER EXPLAINER */}
+      {showFolderInfo && (
+        <div className="popup-overlay" style={{ zIndex: 30000 }}>
+          <div className="popup-content folder-info">
+            <div className="folder-info-icon">
+              <svg viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z" /></svg>
             </div>
-          )}
-          {tourStep === 2 && (
-            <div className="tour-bubble" style={getTourPosition(tempTabRef, 'bottom')}>
-              <h4 className="tour-header">Volatile Memory</h4>
-              <p className="tour-text">Temp mode processes code instantly without database storage.</p>
-              <div className="tour-controls">
-                <button className="btn-tour-cancel" onClick={closeTour}>Skip</button>
-                <button className="btn-tour-next" onClick={() => setTourStep(3)}>Next</button>
-              </div>
-            </div>
-          )}
-          {tourStep === 3 && (
-            <div className="tour-bubble" style={getTourPosition(permTabRef, 'bottom')}>
-              <h4 className="tour-header">Persistent Storage</h4>
-              <p className="tour-text">Permanent mode automatically archives structural breakdowns.</p>
-              <div className="tour-controls">
-                <button className="btn-tour-cancel" onClick={closeTour}>Skip</button>
-                <button className="btn-tour-next" onClick={() => setTourStep(4)}>Next</button>
-              </div>
-            </div>
-          )}
-          {tourStep === 4 && (
-            <div className="tour-bubble" style={getTourPosition(historyTabRef, 'bottom')}>
-              <h4 className="tour-header">Archives</h4>
-              <p className="tour-text">Access your grouped project history and pre-rendered summaries here.</p>
-              <div className="tour-controls">
-                <button className="btn-tour-cancel" onClick={closeTour}>Skip</button>
-                <button className="btn-tour-next" onClick={() => { setActiveTab('temp'); setTourStep(5); }}>Next</button>
-              </div>
-            </div>
-          )}
-          {tourStep === 5 && (
-            <div className="tour-bubble" style={getTourPosition(uploadButtonsRef, 'bottom')}>
-              <h4 className="tour-header">Input Source</h4>
-              <p className="tour-text">Upload directories, zip archives, or link a public GitHub repository.</p>
-              <div className="tour-controls">
-                <button className="btn-tour-cancel" onClick={closeTour}>Skip</button>
-                <button className="btn-tour-next" onClick={() => setTourStep(6)}>Next</button>
-              </div>
-            </div>
-          )}
-          {tourStep === 6 && (
-            <div className="tour-bubble" style={getTourPosition(explainButtonsRef, 'top')}>
-              <h4 className="tour-header">Analysis Depth</h4>
-              <p className="tour-text">Select your target output tier. Use Diagnose for a full forensic audit with ready-to-use code fixes.</p>
-              <div className="tour-controls">
-                <button className="btn-tour-cancel" onClick={closeTour}>Close</button>
-                <button className="btn-tour-next" onClick={closeTour}>Finish</button>
-              </div>
-            </div>
-          )}
-        </>
+            <h3>Select your project folder</h3>
+            <p>
+              Right after you pick a folder, your browser shows a confirmation that mentions uploading files.
+              Every website gets that same built-in security prompt, and no site can restyle or skip it.
+            </p>
+            <ul className="folder-steps">
+              <li><span>1</span>Choose your project folder</li>
+              <li><span>2</span>Click <b>&nbsp;Upload&nbsp;</b> when your browser asks</li>
+              <li><span>3</span>Files are filtered on your device. Nothing is sent until you press an analysis button</li>
+            </ul>
+            <label className="folder-check">
+              <input type="checkbox" checked={folderDontShow} onChange={(e) => setFolderDontShow(e.target.checked)} />
+              Don't show this again
+            </label>
+            <button className="btn-tier" onClick={confirmFolderPicker}>Choose folder</button>
+            <button className="btn-cancel" onClick={() => setShowFolderInfo(false)}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {/* GUIDED TOUR */}
+      {tourIds && activeSteps.length > 0 && (
+        <Tour steps={activeSteps} onClose={closeTour} onStepChange={handleTourStep} />
       )}
 
       {/* TABS */}
@@ -697,7 +680,7 @@ export default function Workspace({ session, onSignIn, sliderRef }) {
           <input type="file" webkitdirectory="" directory="" ref={folderInputRef} disabled={busy} onClick={(e) => { e.target.value = null; }} onChange={handleFolderChange} style={{ display: 'none' }} />
 
           <div className="upload-btn-group" ref={uploadButtonsRef}>
-            <button disabled={busy} onClick={() => folderInputRef.current.click()} className="btn-folder">Load Directory</button>
+            <button disabled={busy} onClick={openFolderPicker} className="btn-folder">Load Directory</button>
             <button disabled={busy} onClick={() => zipInputRef.current.click()} className="btn-zip">Load Archive (.zip)</button>
           </div>
 
@@ -727,6 +710,7 @@ export default function Workspace({ session, onSignIn, sliderRef }) {
             ].map(([lvl, label]) => (
               <button
                 key={lvl}
+                ref={lvl === 'diagnose' ? diagnoseRef : undefined}
                 disabled={busy}
                 onClick={() => handleExplainClick(lvl)}
                 className={`btn-explain lvl-${lvl} ${pendingLevel === lvl ? 'active-action' : ''}`}

@@ -2,22 +2,30 @@ import { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { supabase, provisionKey } from './supabase';
 import Workspace from './Workspace';
 import './App.css';
+import './extras.css';
+
+const GITHUB_URL = 'https://github.com/NartanNaik';
+const LINKEDIN_URL = 'https://www.linkedin.com/in/nartan-naik-90499a359';
+const EMAIL = 'naiknartana@gmail.com';
+const GMAIL_COMPOSE_URL = `https://mail.google.com/mail/?view=cm&fs=1&to=${EMAIL}&su=${encodeURIComponent('Hello from Unpack')}`;
 
 export default function App() {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showSplash, setShowSplash] = useState(true);
   const [isFading, setIsFading] = useState(false);
+  const [contactOpen, setContactOpen] = useState(false);
 
   // Day/Night Slider State (0 = Light, 100 = Dark)
-  // Initialize directly from localStorage so it remembers the exact mix on refresh
   const [themeMix, setThemeMix] = useState(() => {
     const savedMix = localStorage.getItem('unpack_theme_mix');
     return savedMix !== null ? Number(savedMix) : 0;
   });
 
   const sliderRef = useRef(null);
+  const contactRef = useRef(null);
   const provisionedFor = useRef(null); // user id we've already provisioned a key for
+  const contactBtnRef = useRef(null); // used by the guided tour
 
   // Creates the user's OpenRouter key in the background right after login.
   // If this fails, /analyze will retry it on demand, so it is non-fatal.
@@ -49,32 +57,36 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    // Timer controls how long the splash screen plays before fading out
-    const fadeTimer = setTimeout(() => {
-      setIsFading(true);
-    }, 1800);
-
-    const removeTimer = setTimeout(() => {
-      setShowSplash(false);
-    }, 2400); // Matches the 0.6s CSS transition duration
-
+    const fadeTimer = setTimeout(() => setIsFading(true), 1800);
+    const removeTimer = setTimeout(() => setShowSplash(false), 2400);
     return () => {
       clearTimeout(fadeTimer);
       clearTimeout(removeTimer);
     };
   }, []);
 
-  // useLayoutEffect fires synchronously BEFORE the browser paints.
-  // This ensures the splash screen matches the saved theme instantly without flashing.
-  useLayoutEffect(() => {
-    // 1. Backgrounds fade smoothly across all 100 steps
-    document.documentElement.style.setProperty('--mix', `${themeMix}%`);
+  // Close the Contact menu when clicking elsewhere or pressing Escape
+  useEffect(() => {
+    if (!contactOpen) return undefined;
+    const onClick = (e) => {
+      if (contactRef.current && !contactRef.current.contains(e.target)) setContactOpen(false);
+    };
+    const onKey = (e) => {
+      if (e.key === 'Escape') setContactOpen(false);
+    };
+    document.addEventListener('mousedown', onClick);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onClick);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [contactOpen]);
 
-    // 2. Text SNAPS at 50% to prevent unreadable grey-on-grey contrast
+  // useLayoutEffect fires before the browser paints, so the saved theme shows instantly.
+  useLayoutEffect(() => {
+    document.documentElement.style.setProperty('--mix', `${themeMix}%`);
     const textMix = themeMix >= 50 ? 100 : 0;
     document.documentElement.style.setProperty('--text-mix', `${textMix}%`);
-
-    // 3. Save to localStorage permanently
     localStorage.setItem('unpack_theme_mix', themeMix.toString());
   }, [themeMix]);
 
@@ -87,6 +99,16 @@ export default function App() {
 
   return (
     <div>
+      <div className="bg-orbit" aria-hidden="true">
+        {['orbit-a', 'orbit-b'].map((cls) => (
+          <div key={cls} className={`orbit-item ${cls}`}>
+            <svg viewBox="0 0 32 32" fill="none">
+              <path d="M16 2L4 9v14l12 7 12-7V9L16 2z" stroke="var(--accent-main)" strokeWidth="2" strokeLinejoin="round" />
+              <path d="M16 16L4 9m12 7l12-7m-12 7v14" stroke="var(--gold)" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+          </div>
+        ))}
+      </div>
       {showSplash && (
         <div className={`splash-overlay ${isFading ? 'fade-out' : ''}`}>
           <div className="splash-logo">
@@ -129,6 +151,67 @@ export default function App() {
             </svg></span>
           </div>
 
+          {/* CONTACT DROPDOWN */}
+          <div className="contact-wrap" ref={contactRef}>
+                       <button
+              type="button"
+              ref={contactBtnRef}
+              className="btn-contact"
+              aria-haspopup="menu"
+              aria-expanded={contactOpen}
+              onClick={() => setContactOpen((o) => !o)}
+            >
+              <svg style={{ width: '16px', height: '16px', fill: 'currentColor' }} viewBox="0 0 24 24">
+                <path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z" />
+              </svg>
+              Contact
+              <svg className={`contact-chevron ${contactOpen ? 'open' : ''}`} style={{ width: '12px', height: '12px', fill: 'currentColor' }} viewBox="0 0 24 24">
+                <path d="M7 10l5 5 5-5z" />
+              </svg>
+            </button>
+
+            {contactOpen && (
+              <div className="contact-menu" role="menu">
+                <a
+                  className="contact-item contact-email"
+                  href={GMAIL_COMPOSE_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  role="menuitem"
+                  onClick={() => setContactOpen(false)}
+                >
+                  <svg viewBox="0 0 24 24"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z" /></svg>
+                  <span className="ci-text">
+                    <span>Email</span>
+                    <small>{EMAIL}</small>
+                  </span>
+                </a>
+                <a
+                  className="contact-item contact-github"
+                  href={GITHUB_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  role="menuitem"
+                  onClick={() => setContactOpen(false)}
+                >
+                  <svg viewBox="0 0 24 24"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" /></svg>
+                  <span>GitHub</span>
+                </a>
+                <a
+                  className="contact-item contact-linkedin"
+                  href={LINKEDIN_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  role="menuitem"
+                  onClick={() => setContactOpen(false)}
+                >
+                  <svg viewBox="0 0 24 24"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" /></svg>
+                  <span>LinkedIn</span>
+                </a>
+              </div>
+            )}
+          </div>
+
           {session ? (
             <>
               <span className="user-email">{session.user.email}</span>
@@ -145,7 +228,7 @@ export default function App() {
         </div>
       </nav>
 
-      <Workspace session={session} onSignIn={handleSignIn} sliderRef={sliderRef} />
+            <Workspace session={session} onSignIn={handleSignIn} sliderRef={sliderRef} contactBtnRef={contactBtnRef} />
     </div>
   );
 }

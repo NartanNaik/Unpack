@@ -546,7 +546,7 @@ h1, h2, h3, h4, h5, h6 {
     transform: translate(-50%, -50%) rotate(-35deg) !important;
     font-size: 100px !important;
     font-weight: 900 !important;
-    color: rgba(0, 0, 0, 0.025) !important; /* Extremely faint ghost opacity */
+    color: rgba(0, 0, 0, 0.025) !important;
     z-index: 9999 !important;
     opacity: 0.05 !important;
     pointer-events: none !important;
@@ -938,7 +938,6 @@ h1, h2, h3, h4, h5, h6 {
 
 /* ==========================================================================
    RESPONSIVE BREAKPOINTS
-   (Layout-only adjustments, no colors, features, or theme logic changed)
    ========================================================================== */
 
 /* --- Large tablets / small laptops --- */
@@ -1226,3 +1225,208 @@ h1, h2, h3, h4, h5, h6 {
 .btn-cancel-run:hover { border-color: var(--danger-main); color: var(--danger-main); }
 
 .btn-export:disabled { opacity: 0.6; cursor: progress; }
+
+/* =========================================================================
+   COLORFUL TEXTURED BUTTONS
+   ========================================================================= */
+.btn-explain,
+.btn-folder,
+.btn-zip {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  background: linear-gradient(135deg, var(--b1, #6d28d9), var(--b2, #4c1d95));
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
+}
+
+/* Diagonal-stripe texture plus a soft top shine */
+.btn-explain::before,
+.btn-folder::before,
+.btn-zip::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.24), transparent 55%),
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.09) 0 2px, transparent 2px 7px);
+}
+
+/* Animated light sweep on hover */
+.btn-explain::after,
+.btn-folder::after,
+.btn-zip::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -60%;
+  width: 40%;
+  height: 100%;
+  z-index: -1;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.35), transparent);
+  transform: skewX(-20deg);
+  transition: left 0.5s ease;
+}
+.btn-explain:hover:not(:disabled)::after,
+.btn-folder:hover:not(:disabled)::after,
+.btn-zip:hover:not(:disabled)::after {
+  left: 130%;
+}
+
+/* Each analysis level gets its own colors */
+.btn-explain.lvl-minimal    { --b1: #0ea5e9; --b2: #2563eb; }  /* sky to blue */
+.btn-explain.lvl-medium     { --b1: #10b981; --b2: #047857; }  /* emerald */
+.btn-explain.lvl-everything { --b1: #d946ef; --b2: #7c3aed; }  /* magenta to violet */
+.btn-explain.lvl-diagnose   { --b1: #f97316; --b2: #dc2626; }  /* orange to red */
+.btn-folder                 { --b1: #f59e0b; --b2: #b45309; }  /* amber */
+.btn-zip                    { --b1: #14b8a6; --b2: #0f766e; }  /* teal */
+
+/* Keep the colors on hover (older hover rules reset the background) */
+.btn-explain[class*="lvl-"],
+.btn-explain[class*="lvl-"]:hover:not(:disabled),
+.btn-folder,
+.btn-folder:hover:not(:disabled),
+.btn-zip,
+.btn-zip:hover:not(:disabled) {
+  background: linear-gradient(135deg, var(--b1), var(--b2));
+}
+.btn-explain:hover:not(:disabled),
+.btn-folder:hover:not(:disabled),
+.btn-zip:hover:not(:disabled) {
+  transform: translateY(-2px);
+  filter: brightness(1.08) saturate(1.1);
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+
+/* The running button gets a gold ring */
+.btn-explain.active-action {
+  color: #ffffff;
+  border-color: var(--gold-light);
+  box-shadow: 0 0 0 3px var(--gold-soft), 0 8px 20px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+.btn-explain.active-action:hover:not(:disabled) {
+  background: linear-gradient(135deg, var(--b1), var(--b2));
+}
+
+/* Disabled buttons fade to grey while another one runs */
+.btn-explain:disabled:not(.active-action),
+.btn-folder:disabled,
+.btn-zip:disabled {
+  filter: grayscale(0.85) brightness(0.8);
+  opacity: 0.55;
+  box-shadow: none;
+}
+
+/* Export buttons */
+.export-toolbar .btn-export {
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  background:
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.08) 0 2px, transparent 2px 7px),
+    linear-gradient(135deg, var(--e1, #6d28d9), var(--e2, #4c1d95));
+  transition: transform 0.15s ease, filter 0.15s ease;
+}
+.export-toolbar .btn-export:hover:not(:disabled) {
+  transform: translateY(-1px);
+  filter: brightness(1.1);
+  border-color: var(--gold-light);
+}
+.export-toolbar .export-pdf  { --e1: #ef4444; --e2: #b91c1c; }
+.export-toolbar .export-word { --e1: #3b82f6; --e2: #1d4ed8; }
+.export-toolbar .export-ppt  { --e1: #f97316; --e2: #c2410c; }
+
+/* =========================================================================
+   CONTACT DROPDOWN (navbar)
+   ========================================================================= */
+.contact-wrap { position: relative; }
+
+.btn-contact {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-weight: 700;
+  cursor: pointer;
+  color: #2a1458;
+  border: 1px solid var(--gold);
+  background:
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.14) 0 2px, transparent 2px 7px),
+    linear-gradient(135deg, var(--gold-light), var(--gold));
+  box-shadow: 0 3px 10px rgba(166, 124, 26, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+}
+.btn-contact:hover { transform: translateY(-1px); filter: brightness(1.06); box-shadow: 0 6px 16px rgba(166, 124, 26, 0.4); }
+.contact-chevron { transition: transform 0.2s ease; }
+.contact-chevron.open { transform: rotate(180deg); }
+
+.contact-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 10px);
+  min-width: 210px;
+  z-index: 5000;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--card-bg);
+  border: 1px solid var(--gold);
+  border-radius: 14px;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35), 0 0 0 3px var(--gold-soft);
+  animation: scaleUp 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.contact-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 14px;
+  border-radius: 10px;
+  font-weight: 700;
+  text-decoration: none;
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background:
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.08) 0 2px, transparent 2px 7px),
+    linear-gradient(135deg, var(--c1), var(--c2));
+  transition: transform 0.15s ease, filter 0.15s ease;
+}
+.contact-item svg { width: 20px; height: 20px; fill: currentColor; flex-shrink: 0; }
+.contact-item:hover { transform: translateX(3px); filter: brightness(1.12); }
+.contact-github   { --c1: #374151; --c2: #111827; }
+.contact-linkedin { --c1: #0a8fdc; --c2: #0a66c2; }
+
+@media (max-width: 768px) {
+  .contact-menu { right: auto; left: 50%; margin-left: -105px; }
+}
+
+/* =========================================================================
+   CLEARER REPORT TEXT
+   ========================================================================= */
+.markdown-body p { margin: 0 0 14px; }
+.markdown-body li { margin: 5px 0; }
+.markdown-body strong { color: var(--text-main); font-weight: 800; }
+.markdown-body a { color: var(--accent-main); text-decoration: underline; }
+.markdown-body blockquote {
+  margin: 14px 0;
+  padding: 8px 16px;
+  border-left: 4px solid var(--gold);
+  background: var(--bg-color);
+  border-radius: 0 8px 8px 0;
+  color: var(--text-muted);
+}
+.markdown-body table { border-collapse: collapse; }
+.markdown-body th,
+.markdown-body td { border: 1px solid var(--border-color); padding: 8px 12px; text-align: left; }
+.markdown-body th { background: var(--bg-color); }
+.markdown-body pre code { border: none; padding: 0; background: transparent !important; }
