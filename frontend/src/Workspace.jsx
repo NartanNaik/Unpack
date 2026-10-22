@@ -12,7 +12,7 @@ const IGNORE_DIRS = new Set([
   '.cache', '.parcel-cache', '.turbo', '__pycache__', 'venv', '.venv', 'env',
   'site-packages', '.pytest_cache', '.mypy_cache', '.tox', 'vendor', 'target',
   'coverage', '.vercel', '.idea', '.vscode', 'uploaded_projects', 'pods', '.gradle',
-  '__macosx',
+  '__macosx', 'datasets', 'checkpoints', 'logs', 'wandb', 'tensorboard',
 ]);
 const IGNORE_FILES = new Set([
   'package-lock.json', 'yarn.lock', 'pnpm-lock.yaml', 'poetry.lock',
@@ -23,9 +23,11 @@ const IGNORE_EXTS = [
   '.mp4', '.mov', '.mp3', '.wav', '.pdf', '.lock', '.pyc', '.map', '.min.js', '.min.css',
   '.woff', '.woff2', '.ttf', '.otf', '.eot',
   '.zip', '.tar', '.gz', '.rar', '.7z', '.exe', '.dll', '.so', '.bin', '.db', '.sqlite',
+  '.csv', '.tsv', '.jsonl', '.parquet', '.pt', '.pth', '.h5', '.hdf5', '.onnx', '.npy', '.npz', '.pkl', '.ipynb',
 ];
-const MAX_FILE_BYTES = 500 * 1024;       // skip any single file over 500 KB
-const MAX_TOTAL_BYTES = 4 * 1024 * 1024; // Vercel rejects request bodies over ~4.5 MB
+const MAX_FILE_BYTES = 300 * 1024;          // skip any single file over 300 KB
+const MAX_RAW_BYTES = 30 * 1024 * 1024;     // total source size before compression
+const MAX_ZIP_BYTES = 4 * 1024 * 1024;      // Vercel rejects request bodies over ~4.5 MB, so the compressed zip must fit
 
 // skipRoot: for picked folders the first path segment is the folder itself, not a dependency dir
 const shouldIgnore = (path, size = 0, skipRoot = false) => {
@@ -41,6 +43,22 @@ const shouldIgnore = (path, size = 0, skipRoot = false) => {
 
 const formatSize = (bytes) =>
   bytes > 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+
+// If every file sits inside one top-level folder, drop that folder name
+const stripCommonRoot = (items) => {
+  if (items.length === 0) return items;
+  const first = items[0].path.split('/')[0];
+  const allShare = items.every((it) => it.path.includes('/') && it.path.split('/')[0] === first);
+  return allShare ? items.map((it) => ({ ...it, path: it.path.split('/').slice(1).join('/') })) : items;
+};
+
+// Source code compresses very well, so we zip it in the browser before uploading
+async function buildPayload(items) {
+  const { default: JSZip } = await import('jszip');
+  const zip = new JSZip();
+  for (const it of items) zip.file(it.path, it.data);
+  return zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+}
 
 // ---------------------------------------------------------------------------
 // Live status messages
@@ -143,7 +161,7 @@ const SourceIcon = ({ type }) => {
 
 export default function Workspace({ session, onSignIn, sliderRef }) {
   const [activeTab, setActiveTab] = useState('temp');
-  const [selectedFiles, setSelectedFiles] = useState(null); // array of { file, path }
+  const [payload, setPayload] = useState(null); // { blob, count } : the compressed project zip
   const [projectLabel, setProjectLabel] = useState('');
   const [githubUrl, setGithubUrl] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -228,42 +246,60 @@ export default function Workspace({ session, onSignIn, sliderRef }) {
 
   // ------------------------------------------------------------------ file selection
   const clearSelection = () => {
-    setSelectedFiles(null);
+    setPayload(null);
     setProjectLabel('');
   };
 
-  const processFolder = (files) => {
+  // Shared by folder and zip: compress, check the size, remember the result
+  const finishSelection = async (items, { label, type, skipped, noun }) => {
+    if (items.length === 0) {
+      setPopupMsg(`No readable source files were found in this ${noun} after skipping dependencies, build output and binaries.`);
+      clearSelection();
+      return;
+    }
+    const raw = items.reduce((sum, it) => sum + (it.size || 0), 0);
+    if (raw > MAX_RAW_BYTES) {
+      setPopupMsg(`After skipping dependencies and binaries, this ${noun} still has ${formatSize(raw)} of source files. Use the GitHub link for very large projects.`);
+      clearSelection();
+      return;
+    }
+    const blob = await buildPayload(items);
+    if (blob.size > MAX_ZIP_BYTES) {
+      setPopupMsg(`Even compressed, this ${noun} is ${formatSize(blob.size)}. The upload limit is about 4 MB. Use the GitHub link for large projects.`);
+      clearSelection();
+      return;
+    }
+    setPayload({ blob, count: items.length });
+    setProjectLabel(label);
+    setGithubUrl('');
+    const title = type === 'zip' ? 'Selected Package' : 'Selected Directory';
+    setDisplayName(`${title}: ${label} (${items.length} files, ${formatSize(raw)} source, ${formatSize(blob.size)} compressed, ${skipped} skipped)`);
+    setDisplayType(type);
+  };
+
+  const processFolder = async (files) => {
     setIsFileProcessing(true);
     setDisplayName('');
     setDisplayType('');
-
-    setTimeout(() => {
+    try {
       const all = Array.from(files);
       const kept = [];
-      let total = 0;
       for (const f of all) {
         const path = (f.webkitRelativePath || f.name).replace(/\\/g, '/');
         if (shouldIgnore(path, f.size, true)) continue;
-        kept.push({ file: f, path });
-        total += f.size;
+        kept.push({ path, data: f, size: f.size });
       }
       const folderName = (files[0].webkitRelativePath || '').split('/')[0] || 'Selected Folder';
-
-      if (kept.length === 0) {
-        setPopupMsg('No readable source files were found in this folder after skipping dependencies, build output and binaries.');
-        clearSelection();
-      } else if (total > MAX_TOTAL_BYTES) {
-        setPopupMsg(`After skipping dependencies and binaries, ${folderName} is still ${formatSize(total)}. The limit is about 4 MB. Use the GitHub link for large projects.`);
-        clearSelection();
-      } else {
-        setSelectedFiles(kept);
-        setProjectLabel(folderName);
-        setGithubUrl('');
-        setDisplayName(`Selected Directory: ${folderName} (${kept.length} files, ${formatSize(total)}, ${all.length - kept.length} skipped)`);
-        setDisplayType('folder');
-      }
+      await finishSelection(stripCommonRoot(kept), {
+        label: folderName, type: 'folder', skipped: all.length - kept.length, noun: 'folder',
+      });
+    } catch (err) {
+      console.error(err);
+      setPopupMsg('Could not read that folder. Please try again.');
+      clearSelection();
+    } finally {
       setIsFileProcessing(false);
-    }, 400);
+    }
   };
 
   // Zips are opened in the browser so dependency folders can be filtered out before upload
@@ -276,36 +312,28 @@ export default function Workspace({ session, onSignIn, sliderRef }) {
       const zip = await JSZip.loadAsync(zipFile);
       const entries = Object.values(zip.files).filter((e) => !e.dir);
       const kept = [];
-      let total = 0;
       let skipped = 0;
+      let raw = 0;
 
       for (const entry of entries) {
         const path = entry.name.replace(/\\/g, '/');
         if (shouldIgnore(path, 0, false)) { skipped++; continue; }
-        const blob = await entry.async('blob');
-        if (blob.size > MAX_FILE_BYTES) { skipped++; continue; }
-        total += blob.size;
-        if (total > MAX_TOTAL_BYTES) {
-          setPopupMsg(`After skipping dependencies and binaries, this archive is still over 4 MB of source. Use the GitHub link for large projects.`);
+        const data = await entry.async('uint8array');
+        if (data.length > MAX_FILE_BYTES) { skipped++; continue; }
+        raw += data.length;
+        if (raw > MAX_RAW_BYTES) {
+          setPopupMsg('After skipping dependencies and binaries, this archive still has too much source. Use the GitHub link for very large projects.');
           clearSelection();
           return;
         }
-        kept.push({ file: new File([blob], path.split('/').pop()), path });
+        kept.push({ path, data, size: data.length });
       }
 
-      if (kept.length === 0) {
-        setPopupMsg('No readable source files were found in this archive after skipping dependencies, build output and binaries.');
-        clearSelection();
-        return;
-      }
-
-      const label = zipFile.name.replace(/\.zip$/i, '');
-      setSelectedFiles(kept);
-      setProjectLabel(label);
-      setGithubUrl('');
-      setDisplayName(`Selected Package: ${zipFile.name} (${kept.length} files, ${formatSize(total)}, ${skipped} skipped)`);
-      setDisplayType('zip');
-    } catch {
+      await finishSelection(stripCommonRoot(kept), {
+        label: zipFile.name.replace(/\.zip$/i, ''), type: 'zip', skipped, noun: 'archive',
+      });
+    } catch (err) {
+      console.error(err);
       setPopupMsg('That archive could not be opened. It may be corrupted or not a valid .zip file.');
       clearSelection();
     } finally {
@@ -336,7 +364,7 @@ export default function Workspace({ session, onSignIn, sliderRef }) {
   const handleExplainClick = (level) => {
     if (busy || runningRef.current) return;
 
-    if ((!selectedFiles || selectedFiles.length === 0) && !githubUrl.trim()) {
+    if (!payload && !githubUrl.trim()) {
       setPopupMsg("Please provide a GitHub repository link or select a local codebase.");
       return;
     }
@@ -356,7 +384,7 @@ export default function Workspace({ session, onSignIn, sliderRef }) {
 
     // Lock everything immediately, before any await
     runningRef.current = true;
-    resetStatus(!githubUrl.trim() && !!selectedFiles?.length);
+    resetStatus(!githubUrl.trim() && !!payload);
     setLoading(true);
     executeAnalysis(level);
   };
@@ -388,10 +416,8 @@ export default function Workspace({ session, onSignIn, sliderRef }) {
       const formData = new FormData();
       if (githubUrl.trim()) {
         formData.append("github_url", githubUrl.trim());
-      } else if (selectedFiles) {
-        for (const entry of selectedFiles) {
-          formData.append("files", entry.file, entry.path);
-        }
+      } else if (payload) {
+        formData.append("files", payload.blob, "project.zip");
         if (projectLabel) formData.append("project_name", projectLabel);
       }
       formData.append("level", levelToUse);
@@ -541,7 +567,7 @@ export default function Workspace({ session, onSignIn, sliderRef }) {
 
   const exportBtn = (format, label, iconPath) => (
     <button
-      className="btn-export"
+      className={`btn-export export-${format}`}
       disabled={!!exporting}
       onClick={() => handleExport(format)}
       style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
@@ -681,7 +707,7 @@ export default function Workspace({ session, onSignIn, sliderRef }) {
               <div className="loading-bar-track" style={{ maxWidth: '250px' }}>
                 <div className="loading-bar-fill"></div>
               </div>
-              <span style={{ fontSize: '13px', color: 'var(--success-main)', fontWeight: '600' }}>Preparing local files...</span>
+              <span style={{ fontSize: '13px', color: 'var(--success-main)', fontWeight: '600' }}>Filtering and compressing local files...</span>
             </div>
           )}
 
@@ -703,7 +729,7 @@ export default function Workspace({ session, onSignIn, sliderRef }) {
                 key={lvl}
                 disabled={busy}
                 onClick={() => handleExplainClick(lvl)}
-                className={`btn-explain ${pendingLevel === lvl ? 'active-action' : ''}`}
+                className={`btn-explain lvl-${lvl} ${pendingLevel === lvl ? 'active-action' : ''}`}
               >
                 {loading && pendingLevel === lvl ? 'Running...' : label}
               </button>
