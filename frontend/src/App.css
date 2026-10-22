@@ -285,6 +285,9 @@ img, svg {
 .btn-explain:disabled { opacity: 0.55; cursor: not-allowed; }
 .btn-everything { background: var(--accent-main); color: white; border: 1px solid var(--gold); font-weight: 700; }
 .btn-everything:hover:not(:disabled) { background: var(--accent-hover); }
+.btn-explain.active-action:disabled { opacity: 1; cursor: progress; }
+.btn-explain:disabled:not(.active-action) { opacity: 0.4; cursor: not-allowed; filter: grayscale(0.6); }
+.btn-folder:disabled, .btn-zip:disabled { opacity: 0.45; cursor: not-allowed; }
 
 /* ACTION BUTTONS (active state) */
 .btn-explain.active-action {
@@ -1139,3 +1142,87 @@ h1, h2, h3, h4, h5, h6 {
     padding: 0 12px;
   }
 }
+
+/* --- LIVE STATUS PANEL --- */
+.loading-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 270px;
+  text-align: center;
+}
+
+.step-track {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin: 22px 0 6px;
+}
+
+.step-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 99px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  color: var(--text-muted);
+  border: 1px solid var(--border-color);
+  background: var(--bg-color);
+  transition: all 0.3s ease;
+}
+.step-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--border-color);
+}
+.step-pill.done { color: var(--success-main); border-color: rgba(16, 185, 129, 0.4); }
+.step-pill.done .step-dot { background: var(--success-main); }
+.step-pill.active { color: var(--text-main); border-color: var(--gold); box-shadow: 0 0 0 3px var(--gold-soft); }
+.step-pill.active .step-dot {
+  background: radial-gradient(circle at 35% 30%, var(--gold-light), var(--gold));
+  animation: pulse 1.2s infinite;
+}
+
+.status-message {
+  margin: 14px 0 0;
+  min-height: 1.4em;
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-main);
+  animation: statusIn 0.45s ease;
+}
+@keyframes statusIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+.status-sub { margin: 4px 0 0; font-size: 13px; color: var(--text-muted); }
+.status-meta {
+  margin-top: 14px;
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  word-break: break-all;
+}
+
+.btn-cancel-run {
+  margin-top: 18px;
+  padding: 8px 18px;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+.btn-cancel-run:hover { border-color: var(--danger-main); color: var(--danger-main); }
+
+.btn-export:disabled { opacity: 0.6; cursor: progress; }
