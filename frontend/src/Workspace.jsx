@@ -1,19 +1,46 @@
 import { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import pptxgen from "pptxgenjs";
-import { supabase } from './supabase';
+import { supabase, API_URL } from './supabase';
 
 const IGNORE_DIRS = ['node_modules', '.git', 'dist', 'build', '.next', '__pycache__', 'venv', 'env'];
 const IGNORE_EXTS = ['.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico', '.mp4', '.pdf', '.lock', '.pyc'];
+
+const SourceIcon = ({ type }) => {
+  const style = { width: '16px', height: '16px', fill: 'currentColor', flexShrink: 0 };
+  if (type === 'zip') {
+    return (
+      <svg style={style} viewBox="0 0 24 24">
+        <path d="M20.54 5.23l-1.39-1.68C18.88 3.21 18.47 3 18 3H6c-.47 0-.88.21-1.16.55L3.46 5.23C3.17 5.57 3 6.02 3 6.5V19c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6.5c0-.48-.17-.93-.46-1.27zM12 17.5L6.5 12H10v-2h4v2h3.5L12 17.5zM5.12 5l.81-1h12l.94 1H5.12z" />
+      </svg>
+    );
+  }
+  if (type === 'folder') {
+    return (
+      <svg style={style} viewBox="0 0 24 24">
+        <path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z" />
+      </svg>
+    );
+  }
+  if (type === 'github') {
+    return (
+      <svg style={style} viewBox="0 0 24 24">
+        <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
+      </svg>
+    );
+  }
+  return null;
+};
 
 export default function Workspace({ session, onSignIn, sliderRef }) {
   const [activeTab, setActiveTab] = useState('temp');
   const [selectedFiles, setSelectedFiles] = useState(null);
   const [githubUrl, setGithubUrl] = useState('');
   const [displayName, setDisplayName] = useState('');
+    const [displayType, setDisplayType] = useState('');
 
   const [loading, setLoading] = useState(false);
-  const [isFileProcessing, setIsFileProcessing] = useState(false); // NEW: Folder parsing animation state
+  const [isFileProcessing, setIsFileProcessing] = useState(false); // Folder parsing animation state
 
   const [summary, setSummary] = useState('');
   const [projectName, setProjectName] = useState('');
@@ -21,10 +48,6 @@ export default function Workspace({ session, onSignIn, sliderRef }) {
 
   const [isLocked, setIsLocked] = useState(false);
   const [pendingLevel, setPendingLevel] = useState(null);
-  const [showTierModal, setShowTierModal] = useState(false);
-
-  const [activeTier, setActiveTier] = useState(null);
-  const [customKey, setCustomKey] = useState('');
   const [popupMsg, setPopupMsg] = useState(null);
 
   // Tour States
@@ -46,19 +69,13 @@ export default function Workspace({ session, onSignIn, sliderRef }) {
 
   useEffect(() => {
     if (session?.user) {
-      const savedTier = localStorage.getItem(`unpack_active_tier_${session.user.id}`);
-      const savedKey = localStorage.getItem(`unpack_custom_key_${session.user.id}`);
-      setActiveTier(savedTier || null);
-      setCustomKey(savedKey || '');
-
       fetchHistory();
       const hasSeenTour = localStorage.getItem(`tour_${session.user.id}`);
       if (!hasSeenTour) {
         setTourStep(1);
       }
     } else {
-      setActiveTier(null);
-      setCustomKey('');
+      setHistoryLogs([]);
     }
   }, [session]);
 
@@ -79,6 +96,7 @@ export default function Workspace({ session, onSignIn, sliderRef }) {
   const processLocalFiles = (files, isZip) => {
     setIsFileProcessing(true);
     setDisplayName('');
+    setDisplayType('');
 
     // Artificial delay to show the upload/parsing animation for local files
     setTimeout(() => {
@@ -86,10 +104,12 @@ export default function Workspace({ session, onSignIn, sliderRef }) {
       setGithubUrl('');
 
       if (isZip) {
-        setDisplayName(`📦 Selected Package: ${files[0].name}`);
+        setDisplayName(`Selected Package: ${files[0].name}`);
+        setDisplayType('zip');
       } else {
         const folderName = files[0].webkitRelativePath.split('/')[0] || "Selected Folder";
-        setDisplayName(`📁 Selected Directory: ${folderName}`);
+        setDisplayName(`Selected Directory: ${folderName}`);
+        setDisplayType('folder');
       }
       setIsFileProcessing(false);
     }, 1200);
@@ -113,6 +133,7 @@ export default function Workspace({ session, onSignIn, sliderRef }) {
 
     setPendingLevel(level);
 
+    // Not logged in: show the auth wall
     if (!session) {
       setLoading(true);
       setTimeout(() => {
@@ -122,41 +143,20 @@ export default function Workspace({ session, onSignIn, sliderRef }) {
       return;
     }
 
-    if (activeTier) {
-      const keyToUse = activeTier === 'custom' ? customKey : '';
-      executeAnalysis(activeTier, level, keyToUse);
-    } else {
-      setShowTierModal(true);
-    }
+    executeAnalysis(level);
   };
 
-  const executeAnalysis = async (tierType, levelToUse = pendingLevel, overrideKey = null) => {
-    const keyToApply = overrideKey !== null ? overrideKey : customKey;
+  const executeAnalysis = async (levelToUse = pendingLevel) => {
+    if (!levelToUse) return;
 
-    if (tierType === 'onetime' && historyLogs.length > 0) {
-      setShowTierModal(false);
-      setActiveTier(null);
-      if (session?.user) localStorage.removeItem(`unpack_active_tier_${session.user.id}`);
-      setPopupMsg("Free tier limits reached. Please switch to a custom configuration to continue scanning.");
+    // Always grab a fresh token so an expired one gets refreshed automatically
+    const { data: { session: freshSession } } = await supabase.auth.getSession();
+    const accessToken = freshSession?.access_token;
+    if (!accessToken) {
+      setPopupMsg("Your session has expired. Please sign in again.");
       return;
     }
 
-    if (tierType === 'custom' && keyToApply.length < 20) {
-      setShowTierModal(false);
-      setPopupMsg("Invalid configuration key provided. Please verify your credentials.");
-      return;
-    }
-
-    setActiveTier(tierType);
-    if (session?.user) {
-      localStorage.setItem(`unpack_active_tier_${session.user.id}`, tierType);
-      if (tierType === 'custom') {
-        setCustomKey(keyToApply);
-        localStorage.setItem(`unpack_custom_key_${session.user.id}`, keyToApply);
-      }
-    }
-
-    setShowTierModal(false);
     setLoading(true);
     setSummary('');
     setIsLocked(false);
@@ -176,11 +176,8 @@ export default function Workspace({ session, onSignIn, sliderRef }) {
 
     formData.append("level", levelToUse);
     formData.append("mode", activeTab);
-    if (tierType === 'custom') {
-      formData.append("user_api_key", keyToApply);
-    }
-
-    const API_URL = import.meta.env.VITE_BACKEND_URL || "https://unpack-backend.vercel.app";
+    // The backend verifies this token and uses the user's auto-provisioned OpenRouter key
+    formData.append("access_token", accessToken);
 
     try {
       const res = await fetch(`${API_URL}/analyze`, {
@@ -191,7 +188,6 @@ export default function Workspace({ session, onSignIn, sliderRef }) {
       const data = await res.json();
 
       if (data.error) {
-        setShowTierModal(false);
         setPopupMsg(data.error);
         setLoading(false);
         return;
@@ -200,7 +196,7 @@ export default function Workspace({ session, onSignIn, sliderRef }) {
       setSummary(data.summary);
       setProjectName(data.project_name);
 
-      if ((activeTab === 'permanent' || tierType === 'onetime') && session?.user) {
+      if (activeTab === 'permanent' && session?.user) {
         await supabase.from('history').insert([{
           user_id: session.user.id,
           project_name: data.project_name,
@@ -210,7 +206,6 @@ export default function Workspace({ session, onSignIn, sliderRef }) {
         fetchHistory();
       }
     } catch (err) {
-      setShowTierModal(false);
       setPopupMsg("Connection error. Ensure the local parsing engine is running.");
     } finally {
       setLoading(false);
@@ -402,7 +397,7 @@ export default function Workspace({ session, onSignIn, sliderRef }) {
           {tourStep === 6 && (
             <div className="tour-bubble" style={getTourPosition(explainButtonsRef, 'top')}>
               <h4 className="tour-header">Analysis Depth</h4>
-              <p className="tour-text">Select your target output tier to generate parsed documentation.</p>
+              <p className="tour-text">Select your target output tier. Use Diagnose for a full forensic audit with ready-to-use code fixes.</p>
               <div className="tour-controls">
                 <button className="btn-tour-cancel" onClick={closeTour}>Close</button>
                 <button className="btn-tour-next" onClick={closeTour}>Finish</button>
@@ -419,17 +414,6 @@ export default function Workspace({ session, onSignIn, sliderRef }) {
         <button ref={historyTabRef} disabled={loading} onClick={() => { setActiveTab('history'); setSummary(''); setPendingLevel(null); setIsLocked(false); }} className={`tab-btn tab-history ${activeTab === 'history' ? 'active' : ''}`}>View Archives</button>
       </div>
 
-      {session && activeTier && activeTab !== 'history' && (
-        <div className="status-banner">
-          <span>
-            <strong>Configuration:</strong> {activeTier === 'onetime' ? 'Standard Tier (Free Trial)' : 'Custom Credential Tier'}
-          </span>
-          <button disabled={loading} onClick={() => setShowTierModal(true)} className="btn-upgrade">
-            Configure Keys
-          </button>
-        </div>
-      )}
-
       {activeTab !== 'history' && (
         <div className="upload-box">
           <h2 className="upload-title">{activeTab === 'temp' ? "Volatile Workspace" : "Persistent Workspace"}</h2>
@@ -441,13 +425,15 @@ export default function Workspace({ session, onSignIn, sliderRef }) {
               type="text"
               placeholder="https://github.com/username/repository"
               value={githubUrl}
-              onChange={(e) => {
+                          onChange={(e) => {
                 setGithubUrl(e.target.value);
                 if (e.target.value) {
                   setSelectedFiles(null);
-                  setDisplayName(`🔗 GitHub Repo: ${e.target.value}`);
+                  setDisplayName(`GitHub Repo: ${e.target.value}`);
+                  setDisplayType('github');
                 } else {
                   setDisplayName('');
+                  setDisplayType('');
                 }
               }}
               disabled={loading || isFileProcessing}
@@ -475,12 +461,18 @@ export default function Workspace({ session, onSignIn, sliderRef }) {
             </div>
           )}
 
-          {!isFileProcessing && displayName && <div className="selected-file-text">{displayName}</div>}
+                    {!isFileProcessing && displayName && (
+            <div className="selected-file-text" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+              <SourceIcon type={displayType} />
+              <span>{displayName}</span>
+            </div>
+          )}
 
           <div className="action-btn-group" ref={explainButtonsRef} style={{ marginTop: '25px' }}>
             <button disabled={loading || isFileProcessing} onClick={() => handleExplainClick('minimal')} className={`btn-explain ${pendingLevel === 'minimal' ? 'active-action' : ''}`}>Quick Summary</button>
             <button disabled={loading || isFileProcessing} onClick={() => handleExplainClick('medium')} className={`btn-explain ${pendingLevel === 'medium' ? 'active-action' : ''}`}>Standard Architecture</button>
             <button disabled={loading || isFileProcessing} onClick={() => handleExplainClick('everything')} className={`btn-explain ${pendingLevel === 'everything' ? 'active-action' : ''}`}>Deep Dive Breakdown</button>
+            <button disabled={loading || isFileProcessing} onClick={() => handleExplainClick('diagnose')} className={`btn-explain ${pendingLevel === 'diagnose' ? 'active-action' : ''}`}>Diagnose</button>
           </div>
         </div>
       )}
@@ -517,6 +509,7 @@ export default function Workspace({ session, onSignIn, sliderRef }) {
                       if (log.project_name.includes('Quick Summary')) { badgeClass = 'badge-minimal'; badgeText = 'Quick Summary'; }
                       else if (log.project_name.includes('Standard Architecture')) { badgeClass = 'badge-medium'; badgeText = 'Standard'; }
                       else if (log.project_name.includes('Deep Dive')) { badgeClass = 'badge-everything'; badgeText = 'Deep Dive'; }
+                      else if (log.project_name.includes('Diagnose')) { badgeClass = 'badge-diagnose'; badgeText = 'Diagnose'; }
 
                       return (
                         <div key={log.id} onClick={() => { setProjectName(log.project_name); setSummary(log.full_analysis); }} className="archive-row">
@@ -549,7 +542,9 @@ export default function Workspace({ session, onSignIn, sliderRef }) {
             <div className="loading-bar-fill"></div>
           </div>
           <p className="loading-text" style={{ color: 'var(--text-main)', fontSize: '15px', fontWeight: '600', marginTop: '20px' }}>
-            Unpacking project files and mapping structure...
+            {pendingLevel === 'diagnose'
+              ? 'Running forensic audit. This can take a few minutes...'
+              : 'Unpacking project files and mapping structure...'}
           </p>
         </div>
       )}
@@ -577,33 +572,6 @@ export default function Workspace({ session, onSignIn, sliderRef }) {
                 <button onClick={() => onSignIn('github')} className="btn-auth btn-github">GitHub Auth</button>
               </div>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* TIER CONFIG MODAL */}
-      {session && showTierModal && (
-        <div className="modal-overlay" style={{ zIndex: 2000 }}>
-          <div className="modal-content">
-            <h2 style={{ marginTop: 0, color: 'var(--text-main)' }}>Processing Configuration</h2>
-            <div className="tier-box">
-              <h3 style={{ margin: '0 0 8px 0', color: 'var(--text-main)' }}>Standard Execution</h3>
-              <p className="tier-text">Run a single analysis using internal resources.</p>
-              <button onClick={() => executeAnalysis('onetime')} className="btn-tier">Execute Standard</button>
-            </div>
-            <div className="tier-box">
-              <h3 style={{ margin: '0 0 8px 0', color: 'var(--text-main)' }}>Custom Provider</h3>
-              <p className="tier-text">Connect an external API key to bypass limitations.</p>
-              <input
-                type="text"
-                placeholder="Enter connection string (API Key)..."
-                value={customKey}
-                onChange={(e) => setCustomKey(e.target.value)}
-                className="custom-key-input"
-              />
-              <button onClick={() => executeAnalysis('custom', pendingLevel, customKey)} className="btn-tier" style={{ background: 'var(--success-main)' }}>Initialize Connection</button>
-            </div>
-            <button onClick={() => setShowTierModal(false)} className="btn-cancel">Cancel Request</button>
           </div>
         </div>
       )}

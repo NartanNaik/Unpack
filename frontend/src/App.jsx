@@ -1,5 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useRef } from 'react';
-import { supabase } from './supabase';
+import { supabase, provisionKey } from './supabase';
 import Workspace from './Workspace';
 import './App.css';
 
@@ -15,17 +15,34 @@ export default function App() {
     const savedMix = localStorage.getItem('unpack_theme_mix');
     return savedMix !== null ? Number(savedMix) : 0;
   });
-  
+
   const sliderRef = useRef(null);
+  const provisionedFor = useRef(null); // user id we've already provisioned a key for
+
+  // Creates the user's OpenRouter key in the background right after login.
+  // If this fails, /analyze will retry it on demand, so it is non-fatal.
+  const ensureKey = (s) => {
+    if (!s?.access_token || !s?.user) return;
+    if (provisionedFor.current === s.user.id) return;
+    provisionedFor.current = s.user.id;
+    provisionKey(s.access_token).catch((err) => {
+      console.warn('Key provisioning will be retried on first analysis:', err.message);
+      provisionedFor.current = null;
+    });
+  };
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setLoading(false);
+      ensureKey(session);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session);
+      if (event === 'SIGNED_OUT') provisionedFor.current = null;
+      // Deferred so we never do async work inside the auth callback itself
+      setTimeout(() => ensureKey(session), 0);
     });
 
     return () => subscription.unsubscribe();
@@ -47,7 +64,7 @@ export default function App() {
     };
   }, []);
 
-  // THE FIX: useLayoutEffect fires synchronously BEFORE the browser paints.
+  // useLayoutEffect fires synchronously BEFORE the browser paints.
   // This ensures the splash screen matches the saved theme instantly without flashing.
   useLayoutEffect(() => {
     // 1. Backgrounds fade smoothly across all 100 steps
@@ -56,7 +73,7 @@ export default function App() {
     // 2. Text SNAPS at 50% to prevent unreadable grey-on-grey contrast
     const textMix = themeMix >= 50 ? 100 : 0;
     document.documentElement.style.setProperty('--text-mix', `${textMix}%`);
-    
+
     // 3. Save to localStorage permanently
     localStorage.setItem('unpack_theme_mix', themeMix.toString());
   }, [themeMix]);
