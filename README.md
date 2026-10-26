@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/banner.svg" alt="Unpack banner" width="100%">
+  <img src="banner.svg" alt="Unpack banner" width="100%">
 </p>
 
 <p align="center">
@@ -45,7 +45,7 @@ Unpack reads a codebase and writes the documentation for it. Give it a folder, a
 ## Architecture
 
 <p align="center">
-  <img src="docs/assets/architecture.svg" alt="Unpack system architecture diagram" width="100%">
+  <img src="architecture.svg" alt="Unpack system architecture diagram" width="100%">
 </p>
 
 ### Request flow
